@@ -1,4 +1,4 @@
-// src/pages/api/chat.js - 同时支持OPENAI和DEEPSEEK密钥
+// src/pages/api/chat.js - 详细调试版
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -16,17 +16,18 @@ export default async function handler(req, res) {
 
     // 优先使用OPENAI_API_KEY，如果不存在则使用DEEPSEEK_API_KEY
     const apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
-    const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     
     // 检查API密钥是否存在
     if (!apiKey) {
       return res.status(500).json({ 
-        message: 'API密钥未配置',
-        debug: '请在Vercel设置OPENAI_API_KEY或DEEPSEEK_API_KEY环境变量'
+        reply: 'API密钥未配置，请在Vercel设置OPENAI_API_KEY或DEEPSEEK_API_KEY环境变量'
       });
     }
     
-    // 准备DeepSeek API请求数据
+    // 使用可能的不同API端点
+    let apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+    
+    // 准备API请求数据
     const requestData = {
       model: 'deepseek/deepseek-chat:free',
       messages: [
@@ -43,38 +44,70 @@ export default async function handler(req, res) {
       max_tokens: 500
     };
 
-    console.log('发送到API的请求:', {
-      url: apiUrl,
-      model: requestData.model,
-      messageLength: message.length,
-      usingKey: apiKey ? '已设置(出于安全考虑不显示密钥)' : '未设置'
-    });
-
-    // 发送请求到API
-    const response = await axios.post(apiUrl, requestData, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      }
-    });
-
-    console.log('API响应状态:', response.status);
-
-    // 提取回复
-    const reply = response.data.choices[0].message.content;
+    console.log('发送请求到:', apiUrl);
+    console.log('使用模型:', requestData.model);
     
-    // 返回AI回复给前端
-    return res.status(200).json({ reply });
+    // 尝试调用API
+    try {
+      const response = await axios.post(apiUrl, requestData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 10000 // 10秒超时
+      });
+      
+      console.log('API响应状态:', response.status);
+      
+      // 提取回复
+      const reply = response.data.choices[0].message.content;
+      
+      // 返回AI回复给前端
+      return res.status(200).json({ reply });
+    } catch (apiError) {
+      console.error('第一个API端点失败:', apiError.message);
+      
+      // 尝试另一个可能的API端点
+      apiUrl = 'https://api.deepseek.ai/v1/chat/completions';
+      console.log('尝试备用API端点:', apiUrl);
+      
+      try {
+        const response = await axios.post(apiUrl, requestData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          timeout: 10000 // 10秒超时
+        });
+        
+        console.log('备用API响应状态:', response.status);
+        
+        // 提取回复
+        const reply = response.data.choices[0].message.content;
+        
+        // 返回AI回复给前端
+        return res.status(200).json({ reply });
+      } catch (backupApiError) {
+        console.error('备用API端点也失败:', backupApiError.message);
+        throw new Error(`两个API端点都失败。第一个错误: ${apiError.message}, 第二个错误: ${backupApiError.message}`);
+      }
+    }
   } catch (error) {
-    console.error('API调用错误详情:', {
+    console.error('API调用详细错误:', {
       message: error.message,
       response: error.response?.data,
       status: error.response?.status
     });
     
-    // 返回友好错误信息
+    // 返回更详细的错误信息
     return res.status(500).json({ 
-      reply: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！'
+      reply: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！',
+      error: true,
+      debug: {
+        message: error.message,
+        response: error.response?.data ? JSON.stringify(error.response.data) : null,
+        status: error.response?.status || null
+      }
     });
   }
 }

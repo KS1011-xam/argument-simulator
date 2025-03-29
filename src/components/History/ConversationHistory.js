@@ -17,16 +17,10 @@ import {
   DialogActions,
   Button,
   CircularProgress,
-  Avatar,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Chip,
-  Tooltip
+  Avatar
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { format } from 'date-fns';
 import { useRouter } from 'next/router';
 
@@ -73,7 +67,7 @@ const ConversationHistory = () => {
   // 初始加载
   useEffect(() => {
     loadConversations();
-  }, [currentUser]);
+  }, [currentUser, loadConversations]);
 
   // 删除对话记录
   const deleteConversation = async (id) => {

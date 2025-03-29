@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, TextField, Button, Typography, Paper, Avatar, IconButton, Divider, MenuItem, Select, FormControl, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Chip, Tooltip } from '@mui/material';
+import { Box, TextField, Button, Typography, Paper, Avatar, IconButton, Divider, MenuItem, Select, FormControl, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Chip } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import RecommendIcon from '@mui/icons-material/Recommend';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import { scenarios } from '../../data/scenarios';
@@ -69,7 +69,6 @@ const ChatInterface = () => {
   const [customScenario, setCustomScenario] = useState('');
   const [showCustomDialog, setShowCustomDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [characterName, setCharacterName] = useState('');
   const [recommendedScenarios, setRecommendedScenarios] = useState([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const messagesEndRef = useRef(null);
@@ -89,7 +88,7 @@ const ChatInterface = () => {
     if (currentUser) {
       loadRecommendations();
     }
-  }, [currentUser]);
+  }, [currentUser, loadRecommendations]);
 
   // 加载推荐场景
   const loadRecommendations = async () => {
@@ -117,8 +116,6 @@ const ChatInterface = () => {
     // 找到选中的场景
     const selectedScenario = scenarios.find(s => s.id === value);
     if (selectedScenario) {
-      setCharacterName(selectedScenario.character);
-      
       // 添加场景描述消息
       setMessages([
         { id: 'scenario-desc', role: 'system', content: selectedScenario.description }

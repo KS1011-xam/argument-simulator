@@ -1,6 +1,6 @@
 import React from 'react';
 import ChatInterface from '../components/Chat/ChatInterface';
-import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, Button } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';

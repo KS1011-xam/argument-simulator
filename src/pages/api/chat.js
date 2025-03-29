@@ -1,4 +1,4 @@
-// src/pages/api/chat.js - 使用Google Gemini API
+// src/pages/api/chat.js - 带详细调试的Gemini API
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -15,14 +15,19 @@ export default async function handler(req, res) {
     }
 
     // 使用Google Gemini API
-    // 注意：你需要在Vercel设置环境变量GEMINI_API_KEY
     const apiKey = process.env.GEMINI_API_KEY;
     
-    if (!apiKey) {
+    // 检查API密钥是否存在且不为空
+    if (!apiKey || apiKey.trim() === '') {
+      console.error('API密钥未配置或为空');
       return res.status(500).json({ 
-        reply: 'API密钥未配置，请在Vercel设置GEMINI_API_KEY环境变量'
+        reply: 'API密钥未配置，请在Vercel设置GEMINI_API_KEY环境变量',
+        debug: { error: 'API_KEY_MISSING' }
       });
     }
+    
+    // 记录API密钥的前几个字符以确认它被正确加载（不记录完整密钥）
+    console.log('API密钥前5个字符:', apiKey.substring(0, 5));
     
     // Gemini API端点
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
@@ -47,41 +52,96 @@ export default async function handler(req, res) {
       }
     };
 
-    console.log('发送请求到Gemini API');
+    console.log('准备发送请求到Gemini API');
+    console.log('API URL:', apiUrl.split('?')[0] + '?key=HIDDEN'); // 隐藏实际的API密钥
+    console.log('用户消息长度:', message.length);
     
-    // 调用Gemini API
-    const response = await axios.post(apiUrl, requestData, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    console.log('Gemini API响应状态:', response.status);
-    
-    // 提取回复
-    let reply = '';
-    if (response.data && 
-        response.data.candidates && 
-        response.data.candidates.length > 0 && 
-        response.data.candidates[0].content && 
-        response.data.candidates[0].content.parts && 
-        response.data.candidates[0].content.parts.length > 0) {
+    try {
+      // 调用Gemini API
+      const response = await axios.post(apiUrl, requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000 // 10秒超时
+      });
       
-      reply = response.data.candidates[0].content.parts[0].text;
-    } else {
-      console.log('无法识别的响应格式:', response.data);
-      reply = '哼！我才懒得回答你这种问题！';
+      console.log('Gemini API响应状态:', response.status);
+      
+      if (response.data) {
+        console.log('响应数据结构:', JSON.stringify(Object.keys(response.data)));
+        
+        // 提取回复
+        let reply = '';
+        if (response.data.candidates && 
+            response.data.candidates.length > 0 && 
+            response.data.candidates[0].content && 
+            response.data.candidates[0].content.parts && 
+            response.data.candidates[0].content.parts.length > 0) {
+          
+          reply = response.data.candidates[0].content.parts[0].text;
+          console.log('成功提取回复，长度:', reply.length);
+        } else {
+          console.log('响应数据格式无法识别:', JSON.stringify(response.data));
+          reply = '哼！我才懒得回答你这种问题！';
+        }
+        
+        // 返回回复给前端
+        return res.status(200).json({ reply });
+      } else {
+        throw new Error('API响应为空');
+      }
+    } catch (apiError) {
+      console.error('Gemini API调用失败:', apiError.message);
+      
+      // 记录详细的错误信息
+      if (apiError.response) {
+        console.error('错误状态码:', apiError.response.status);
+        console.error('错误详情:', JSON.stringify(apiError.response.data));
+      }
+      
+      // 尝试不同的Gemini模型
+      console.log('尝试备用Gemini模型...');
+      const backupUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+      
+      try {
+        const backupResponse = await axios.post(backupUrl, requestData, {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        });
+        
+        console.log('备用模型响应状态:', backupResponse.status);
+        
+        if (backupResponse.data && 
+            backupResponse.data.candidates && 
+            backupResponse.data.candidates.length > 0 && 
+            backupResponse.data.candidates[0].content && 
+            backupResponse.data.candidates[0].content.parts && 
+            backupResponse.data.candidates[0].content.parts.length > 0) {
+          
+          const backupReply = backupResponse.data.candidates[0].content.parts[0].text;
+          console.log('成功从备用模型获取回复');
+          return res.status(200).json({ reply: backupReply });
+        }
+      } catch (backupError) {
+        console.error('备用模型也失败了:', backupError.message);
+        throw apiError; // 抛出原始错误继续处理
+      }
+      
+      throw apiError; // 如果备用也失败，继续抛出错误
     }
-    
-    // 返回回复给前端
-    return res.status(200).json({ reply });
   } catch (error) {
-    console.error('API调用错误:', error.message);
-    console.error('详细错误:', error.response?.data);
+    console.error('处理过程中发生错误:', error.message);
     
-    // 返回错误信息
+    // 返回详细的错误信息
     return res.status(500).json({ 
-      reply: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！'
+      reply: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！',
+      debug: { 
+        error: error.message,
+        response: error.response?.data ? JSON.stringify(error.response.data) : null,
+        status: error.response?.status || null
+      }
     });
   }
 }

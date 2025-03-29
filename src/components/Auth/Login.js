@@ -1,6 +1,4 @@
-import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../firebase/config';
+import React, { useState, useEffect } from 'react';
 import { TextField, Button, Typography, Box, Alert } from '@mui/material';
 import Link from 'next/link';
 
@@ -9,13 +7,35 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [auth, setAuth] = useState(null);
+
+  // 确保Firebase相关代码只在客户端执行
+  useEffect(() => {
+    const loadFirebase = async () => {
+      try {
+        const { auth } = await import('../../firebase/config');
+        setAuth(auth);
+      } catch (error) {
+        console.error("Error loading Firebase:", error);
+      }
+    };
+    
+    loadFirebase();
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    if (!auth) {
+      setError('Firebase尚未初始化，请稍后再试');
+      return;
+    }
+    
     setError('');
     setLoading(true);
     
     try {
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
       await signInWithEmailAndPassword(auth, email, password);
       // 登录成功后会自动由AuthContext处理重定向
     } catch (err) {

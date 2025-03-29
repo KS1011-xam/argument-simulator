@@ -142,7 +142,7 @@ export const scenarios = [
     {
       id: "return-rejected",
       title: "商店拒绝退换有质量问题的商品",
-      description: "你购买的商品使用没多久就出现了质量问题，但商店以"已经使用过"为由拒绝退换...",
+      description: `你购买的商品使用没多久就出现了质量问题，但商店以"已经使用过"为由拒绝退换...`,
       character: "店员",
       initialMessage: "这明显是你使用不当造成的，我们概不负责。"
     },

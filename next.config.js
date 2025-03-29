@@ -4,9 +4,7 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // 明确告诉Next.js页面目录在src/pages
-  distDir: '.next',
-  dir: '.'
+  distDir: '.next'
 };
 
 module.exports = nextConfig;

@@ -1,4 +1,4 @@
-// src/pages/api/chat.js - 灵活配置版本
+// src/pages/api/chat.js - 同时支持OPENAI和DEEPSEEK密钥
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -14,24 +14,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: '消息不能为空' });
     }
 
-    // DeepSeek API配置 - 从环境变量获取
-    const apiKey = process.env.DEEPSEEK_API_KEY;
-    // 允许通过环境变量自定义API端点
-    const apiUrl = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
-    // 允许通过环境变量自定义模型名称
-    const modelName = process.env.DEEPSEEK_MODEL || 'deepseek/deepseek-chat:free';
+    // 优先使用OPENAI_API_KEY，如果不存在则使用DEEPSEEK_API_KEY
+    const apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
+    const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     
     // 检查API密钥是否存在
     if (!apiKey) {
       return res.status(500).json({ 
         message: 'API密钥未配置',
-        debug: '请在Vercel设置DEEPSEEK_API_KEY环境变量'
+        debug: '请在Vercel设置OPENAI_API_KEY或DEEPSEEK_API_KEY环境变量'
       });
     }
     
     // 准备DeepSeek API请求数据
     const requestData = {
-      model: modelName,
+      model: 'deepseek/deepseek-chat:free',
       messages: [
         {
           role: 'system',
@@ -46,80 +43,38 @@ export default async function handler(req, res) {
       max_tokens: 500
     };
 
-    console.log('发送到DeepSeek的请求:', {
+    console.log('发送到API的请求:', {
       url: apiUrl,
       model: requestData.model,
-      messageLength: message.length
+      messageLength: message.length,
+      usingKey: apiKey ? '已设置(出于安全考虑不显示密钥)' : '未设置'
     });
 
-    // 根据环境变量决定头部格式
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // 添加授权头 - 支持两种常见格式
-    if (process.env.DEEPSEEK_AUTH_TYPE === 'api-key') {
-      headers['api-key'] = apiKey;
-    } else {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    // 发送请求到DeepSeek API
-    const response = await axios.post(apiUrl, requestData, { headers });
-
-    console.log('DeepSeek API响应状态:', response.status);
-
-    // 提取DeepSeek的回复 - 适应不同的响应格式
-    let reply;
-    if (response.data.choices && response.data.choices[0]) {
-      if (response.data.choices[0].message) {
-        reply = response.data.choices[0].message.content;
-      } else if (response.data.choices[0].text) {
-        reply = response.data.choices[0].text;
-      } else {
-        reply = JSON.stringify(response.data.choices[0]);
+    // 发送请求到API
+    const response = await axios.post(apiUrl, requestData, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       }
-    } else if (response.data.response) {
-      reply = response.data.response;
-    } else {
-      // 如果无法识别响应格式，返回完整的响应数据以便调试
-      console.log('未识别的响应格式:', response.data);
-      reply = "API响应格式异常，请查看日志";
-    }
+    });
+
+    console.log('API响应状态:', response.status);
+
+    // 提取回复
+    const reply = response.data.choices[0].message.content;
     
     // 返回AI回复给前端
     return res.status(200).json({ reply });
   } catch (error) {
-    console.error('DeepSeek API 调用错误详情:', {
+    console.error('API调用错误详情:', {
       message: error.message,
       response: error.response?.data,
       status: error.response?.status
     });
     
-    // 检查是否有详细的错误信息
-    let errorMessage = '哼，你说什么？我怎么听不懂？不要跟我打哑谜！';
-    let errorDetails = null;
-    
-    if (error.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorDetails = error.response.data;
-      } else if (error.response.data.error) {
-        errorDetails = error.response.data.error;
-      } else {
-        errorDetails = JSON.stringify(error.response.data);
-      }
-    }
-    
-    // 返回详细错误信息以便调试
+    // 返回友好错误信息
     return res.status(500).json({ 
-      message: errorMessage,
-      error: true,
-      debug: {
-        errorMessage: error.message,
-        responseData: errorDetails,
-        responseStatus: error.response?.status,
-        stack: error.stack?.split('\n').slice(0, 3).join('\n')
-      }
+      reply: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！'
     });
   }
 }

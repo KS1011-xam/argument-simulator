@@ -1,4 +1,4 @@
-// src/pages/api/chat.js
+// src/pages/api/chat.js - 增强版错误处理
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -16,11 +16,20 @@ export default async function handler(req, res) {
 
     // DeepSeek API配置
     const apiKey = process.env.DEEPSEEK_API_KEY;
+    
+    // 检查API密钥是否存在
+    if (!apiKey) {
+      return res.status(500).json({ 
+        message: 'API密钥未配置',
+        debug: '请在Vercel设置DEEPSEEK_API_KEY环境变量'
+      });
+    }
+    
     const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
 
     // 准备DeepSeek API请求数据
     const requestData = {
-      model: 'deepseek-chat', // 使用适合的DeepSeek模型
+      model: ''deepseek/deepseek-chat:free'', // 使用适合的DeepSeek模型
       messages: [
         {
           role: 'system',
@@ -51,17 +60,16 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('DeepSeek API 调用错误:', error.response?.data || error.message);
     
-    // 友好错误处理，记录详细错误但返回简单消息给用户
-    let errorMessage = '哼，你说什么？我怎么听不懂？不要跟我打哑谜！';
-    
-    // 如果需要在开发环境返回更详细的错误信息
-    if (process.env.NODE_ENV === 'development') {
-      errorMessage = error.response?.data?.error?.message || error.message;
-    }
-    
+    // 返回详细错误信息以便调试
     return res.status(500).json({ 
-      message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? (error.response?.data || error.message) : undefined
+      message: '哼，你说什么？我怎么听不懂？不要跟我打哑谜！',
+      error: true,
+      debug: {
+        errorMessage: error.message,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n')
+      }
     });
   }
 }

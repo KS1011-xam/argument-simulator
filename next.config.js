@@ -2,9 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
-    // 完全禁用ESLint检查以便构建成功
     ignoreDuringBuilds: true,
   },
+  // 明确告诉Next.js页面目录在src/pages
+  distDir: '.next',
+  dir: '.'
 };
 
 module.exports = nextConfig;

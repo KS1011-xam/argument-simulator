@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    eslint: {
-      // 暂时禁用React Hook依赖警告
-      ignoreDuringBuilds: true,
-    },
-    reactStrictMode: true,
-  };
-  
-  module.exports = nextConfig;
+  reactStrictMode: true,
+  eslint: {
+    // 暂时禁用ESLint检查以便能成功构建
+    ignoreDuringBuilds: true,
+  },
+};
+
+module.exports = nextConfig;

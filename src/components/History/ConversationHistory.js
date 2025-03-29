@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,7 +33,7 @@ const ConversationHistory = () => {
   const router = useRouter();
 
   // 加载用户的对话历史
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     if (!currentUser) return;
     
     setLoading(true);
@@ -62,7 +62,7 @@ const ConversationHistory = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
   // 初始加载
   useEffect(() => {

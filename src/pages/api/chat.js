@@ -1,4 +1,4 @@
-// src/pages/api/chat.js - 增强版错误处理
+// src/pages/api/chat.js - 使用DeepSeek免费模型
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -25,11 +25,12 @@ export default async function handler(req, res) {
       });
     }
     
+    // 使用DeepSeek API端点
     const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
 
-    // 准备DeepSeek API请求数据
+    // 准备DeepSeek API请求数据 - 使用免费模型
     const requestData = {
-      model: ''deepseek/deepseek-chat:free'', // 使用适合的DeepSeek模型
+      model: 'deepseek/deepseek-chat:free', // 使用DeepSeek免费模型
       messages: [
         {
           role: 'system',
@@ -44,6 +45,12 @@ export default async function handler(req, res) {
       max_tokens: 500
     };
 
+    console.log('发送到DeepSeek的请求:', {
+      url: apiUrl,
+      model: requestData.model,
+      messageLength: message.length
+    });
+
     // 发送请求到DeepSeek API
     const response = await axios.post(apiUrl, requestData, {
       headers: {
@@ -52,13 +59,19 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log('DeepSeek API响应状态:', response.status);
+
     // 提取DeepSeek的回复
     const reply = response.data.choices[0].message.content;
     
     // 返回AI回复给前端
     return res.status(200).json({ reply });
   } catch (error) {
-    console.error('DeepSeek API 调用错误:', error.response?.data || error.message);
+    console.error('DeepSeek API 调用错误详情:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     
     // 返回详细错误信息以便调试
     return res.status(500).json({ 

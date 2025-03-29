@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, TextField, Button, Typography, Paper, Avatar, IconButton, Divider, MenuItem, Select, FormControl, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Chip } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
@@ -82,6 +82,17 @@ const ChatInterface = () => {
     scrollToBottom();
   }, [messages]);
 
+  // 加载推荐场景
+  const loadRecommendations = useCallback(async () => {
+    try {
+      const recommendations = await generateRecommendations(currentUser?.uid, 3);
+      setRecommendedScenarios(recommendations);
+      setShowRecommendations(recommendations.length > 0);
+    } catch (error) {
+      console.error("Error loading recommendations:", error);
+    }
+  }, [currentUser]);
+
   // 加载用户推荐场景
   useEffect(() => {
     // 只有当用户登录后才加载推荐
@@ -89,17 +100,6 @@ const ChatInterface = () => {
       loadRecommendations();
     }
   }, [currentUser, loadRecommendations]);
-
-  // 加载推荐场景
-  const loadRecommendations = async () => {
-    try {
-      const recommendations = await generateRecommendations(currentUser.uid, 3);
-      setRecommendedScenarios(recommendations);
-      setShowRecommendations(recommendations.length > 0);
-    } catch (error) {
-      console.error("Error loading recommendations:", error);
-    }
-  };
 
   // 处理选择场景
   const handleScenarioChange = (event) => {

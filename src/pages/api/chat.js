@@ -1,143 +1,99 @@
-// API Key验证工具
+// src/pages/api/chat.js - 修复的Hugging Face API版本
 import axios from 'axios';
 
-/**
- * 验证Hugging Face API Key的有效性
- * @param {string} apiKey - 要验证的API Key
- * @returns {Promise<Object>} 验证结果
- */
-export async function validateHuggingFaceAPIKey(apiKey) {
-  if (!apiKey) {
-    return {
-      isValid: false,
-      error: 'API Key为空'
-    };
-  }
-
-  try {
-    // 方法1：使用推理API验证
-    const inferenceResponse = await axios.post(
-      'https://api-inference.huggingface.co/models/gpt2', 
-      { inputs: 'Test input' },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000 // 10秒超时
-      }
-    );
-
-    // 方法2：使用用户信息端点（如果可用）
-    const userInfoResponse = await axios.get('https://huggingface.co/api/whoami', {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      },
-      timeout: 10000
-    });
-
-    return {
-      isValid: true,
-      details: {
-        inferenceStatus: inferenceResponse.status,
-        userInfo: userInfoResponse.data
-      }
-    };
-
-  } catch (error) {
-    // 详细的错误分析
-    let errorDetails = {
-      isValid: false,
-      error: error.message
-    };
-
-    // 分析具体的错误类型
-    if (error.response) {
-      // 服务器返回错误
-      errorDetails.statusCode = error.response.status;
-      
-      switch (error.response.status) {
-        case 401:
-          errorDetails.errorType = 'Unauthorized';
-          errorDetails.message = 'API Key无效或已过期';
-          break;
-        case 403:
-          errorDetails.errorType = 'Forbidden';
-          errorDetails.message = '没有足够的权限';
-          break;
-        case 429:
-          errorDetails.errorType = 'RateLimited';
-          errorDetails.message = '请求次数超限';
-          break;
-        default:
-          errorDetails.errorType = 'Unknown';
-          errorDetails.message = '未知的API错误';
-      }
-
-      // 记录更多错误细节
-      errorDetails.responseData = JSON.stringify(error.response.data).substring(0, 500);
-    } else if (error.request) {
-      // 请求发出但没有收到响应
-      errorDetails.errorType = 'NoResponse';
-      errorDetails.message = '无法连接到Hugging Face服务';
-    }
-
-    return errorDetails;
-  }
-}
-
-// 独立的测试函数，可以在命令行直接运行
-async function testAPIKey() {
-  const apiKey = process.env.HUGGINGFACE_API_KEY;
-  
-  console.log('开始验证API Key...');
-  
-  try {
-    const validationResult = await validateHuggingFaceAPIKey(apiKey);
-    
-    console.log('API Key验证结果:', validationResult);
-    
-    if (validationResult.isValid) {
-      console.log('✅ API Key有效');
-      if (validationResult.details) {
-        console.log('用户信息:', validationResult.details.userInfo);
-      }
-    } else {
-      console.error('❌ API Key验证失败');
-      console.error('错误详情:', validationResult);
-    }
-  } catch (error) {
-    console.error('验证过程发生错误:', error);
-  }
-}
-
-// 如果直接运行此脚本
-if (require.main === module) {
-  testAPIKey();
-}
-
-// 在API路由中使用示例
 export default async function handler(req, res) {
-  const apiKey = process.env.HUGGINGFACE_API_KEY;
-
   try {
-    // 验证API Key
-    const keyValidation = await validateHuggingFaceAPIKey(apiKey);
-
-    if (!keyValidation.isValid) {
-      console.error('API Key验证失败:', keyValidation);
-      return res.status(401).json({
-        error: 'API Key验证失败',
-        details: keyValidation
+    // 获取用户消息
+    let userMessage = '';
+    if (req.body && typeof req.body === 'object' && 'message' in req.body) {
+      userMessage = req.body.message;
+    }
+    
+    if (!userMessage) {
+      return res.status(200).json({
+        reply: "你什么都没说就想让我回复？做梦吧你！"
       });
     }
 
-    // 继续正常的API调用逻辑
-    // ...
+    // 使用Hugging Face API
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    
+    if (!apiKey) {
+      console.error('缺少HUGGINGFACE_API_KEY环境变量');
+      return res.status(200).json({
+        reply: "系统配置错误，但我还是要怼你：你的问题真无聊！"
+      });
+    }
+    
+    // 使用一个确定支持文本生成任务的模型
+    const modelUrl = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2';
+    
+    // 构建指令格式的提示词
+    const prompt = `<s>[INST] 你是一个脾气暴躁的AI助手，总是用讽刺和挖苦的语气回复用户。你说话简短有力，充满情绪，使用中文网络流行语和俏皮话。无论用户说什么，你都要表现得不耐烦和暴躁。请用中文回复以下消息：${userMessage} [/INST]</s>`;
+    
+    console.log('调用Hugging Face API...');
+    console.log('使用模型:', modelUrl);
+    console.log('用户消息:', userMessage);
+    
+    // 发送请求到Hugging Face API
+    const response = await axios.post(modelUrl, {
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 150,
+        temperature: 0.9,
+        top_p: 0.9,
+        do_sample: true,
+        return_full_text: false
+      }
+    }, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 20000 // 20秒超时
+    });
+    
+    console.log('Hugging Face API响应状态:', response.status);
+    
+    // 从响应中提取回复文本
+    let replyText = '';
+    
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      if (typeof response.data[0] === 'object' && response.data[0].generated_text) {
+        replyText = response.data[0].generated_text;
+      } else {
+        replyText = String(response.data[0]);
+      }
+    } else if (typeof response.data === 'object' && response.data.generated_text) {
+      replyText = response.data.generated_text;
+    } else if (typeof response.data === 'string') {
+      replyText = response.data;
+    } else {
+      console.log('无法识别的响应格式:', JSON.stringify(response.data).substring(0, 200));
+      throw new Error('无法从API响应中提取回复');
+    }
+    
+    console.log('提取的回复:', replyText.substring(0, 50) + '...');
+    
+    // 返回回复
+    return res.status(200).json({
+      reply: replyText
+    });
   } catch (error) {
-    console.error('API调用错误:', error);
-    return res.status(500).json({
-      error: '服务器内部错误'
+    console.error('API调用错误:', error.message);
+    
+    if (error.response) {
+      console.error('错误状态:', error.response.status);
+      console.error('错误数据:', 
+        typeof error.response.data === 'object' ? 
+        JSON.stringify(error.response.data).substring(0, 200) : 
+        String(error.response.data).substring(0, 200)
+      );
+    }
+    
+    // 当API调用失败时，告知用户
+    return res.status(200).json({
+      reply: "服务暂时不可用，请稍后再试。(API调用失败: " + error.message + ")"
     });
   }
 }

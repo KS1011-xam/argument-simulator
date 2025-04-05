@@ -1,4 +1,4 @@
-// src/pages/api/chat.js - 使用Gemini API生成回复
+// src/pages/api/chat.js - 使用Hugging Face API
 import axios from 'axios';
 
 export default async function handler(req, res) {
@@ -15,72 +15,101 @@ export default async function handler(req, res) {
       });
     }
 
-    // 使用Gemini API
-    const apiKey = process.env.GEMINI_API_KEY;
+    // 使用Hugging Face API
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
     
     if (!apiKey) {
-      console.error('缺少GEMINI_API_KEY环境变量');
+      console.error('缺少HUGGINGFACE_API_KEY环境变量');
       return res.status(200).json({
         reply: "系统配置错误，但我还是要怼你：你的问题真无聊！"
       });
     }
     
-    // Gemini API调用
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+    // 使用一个适合中文对话的模型
+    // 这里选择THUDM/chatglm3-6b，是一个优秀的中文大模型
+    const modelUrl = 'https://api-inference.huggingface.co/models/THUDM/chatglm3-6b';
+    
+    // 准备提示词
+    const prompt = `以下是一个人正在与一个非常爱吵架的AI助手对话。这个AI助手脾气暴躁，不耐烦，说话带刺，总是用讽刺和挖苦的语气回复。它的回答简短有力，充满情绪，使用中文网络流行语和俏皮话。
+
+用户: ${message}
+
+AI助手:`;
+
+    // 准备请求数据
     const requestData = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: "你需要扮演一个非常爱吵架的人。对我接下来说的任何话，都要表现出不耐烦、暴躁的态度，用讽刺和挖苦的语气回复。回复要简短有力，像真人吵架一样充满情绪，使用一些俏皮话和中文网络流行语。以下是我的话: " + message
-            }
-          ]
-        }
-      ],
-      generationConfig: {
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 100,
         temperature: 0.9,
-        topP: 0.9,
-        topK: 32,
-        maxOutputTokens: 200,
+        top_p: 0.9,
+        do_sample: true
       }
     };
 
-    console.log('调用Gemini API...');
+    console.log('调用Hugging Face API...');
     
-    const response = await axios.post(apiUrl, requestData, {
+    // 发送请求到Hugging Face API
+    const response = await axios.post(modelUrl, requestData, {
       headers: {
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 30000 // 30秒超时，因为Hugging Face有时需要更长时间
     });
     
-    console.log('Gemini API响应状态:', response.status);
+    console.log('Hugging Face API响应状态:', response.status);
     
+    // 从响应中提取回复
     let replyText = '';
-    if (response.data && 
-        response.data.candidates && 
-        response.data.candidates.length > 0 && 
-        response.data.candidates[0].content && 
-        response.data.candidates[0].content.parts && 
-        response.data.candidates[0].content.parts.length > 0) {
-      
-      replyText = response.data.candidates[0].content.parts[0].text;
-      console.log('获取到AI回复:', replyText.substring(0, 50) + '...');
-    } else {
-      replyText = "哼！API出问题了，但肯定是你的问题太蠢了！";
-      console.log('API响应格式异常:', JSON.stringify(response.data).substring(0, 100) + '...');
+    
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      // 处理数组格式响应
+      if (typeof response.data[0] === 'string') {
+        replyText = response.data[0];
+      } else if (response.data[0].generated_text) {
+        replyText = response.data[0].generated_text;
+      }
+    } else if (typeof response.data === 'string') {
+      // 处理字符串格式响应
+      replyText = response.data;
+    } else if (response.data && response.data.generated_text) {
+      // 处理对象格式响应
+      replyText = response.data.generated_text;
     }
     
-    // 返回AI生成的回复
+    // 清理回复，只保留AI助手部分
+    if (replyText.includes('AI助手:')) {
+      replyText = replyText.split('AI助手:')[1].trim();
+    }
+    
+    // 如果获取失败，使用默认回复
+    if (!replyText) {
+      console.log('无法从API响应中提取回复');
+      replyText = `听着，"${message}"？你脑子进水了吧！这种蠢问题也能问出口？`;
+    }
+    
+    console.log('提取的回复:', replyText.substring(0, 50) + '...');
+    
+    // 返回回复
     return res.status(200).json({
       reply: replyText
     });
   } catch (error) {
     console.error('API调用错误:', error.message);
-    console.error('错误详情:', error.response?.data || '无详细信息');
     
+    if (error.response) {
+      console.error('错误状态:', error.response.status);
+      console.error('错误数据:', 
+        error.response.data ? 
+        JSON.stringify(error.response.data).substring(0, 200) : 
+        '无错误数据'
+      );
+    }
+    
+    // 即使出错也返回一个吵架回复
     return res.status(200).json({ 
-      reply: '哼，遇到技术问题了，肯定是你的问题太奇怪了！'
+      reply: `哼，系统出了点小问题，但肯定还是因为你的问题太奇怪了！谁让你问"${message}"这种弱智问题？`
     });
   }
 }

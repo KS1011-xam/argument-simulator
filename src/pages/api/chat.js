@@ -1,39 +1,58 @@
-// src/pages/api/chat.js - 修复的Hugging Face API版本
+// src/pages/api/chat.js
 import axios from 'axios';
 
 export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: '只支持POST请求' });
+  }
+  
   try {
-    // 获取用户消息
-    let userMessage = '';
-    if (req.body && typeof req.body === 'object' && 'message' in req.body) {
-      userMessage = req.body.message;
+    // 从请求中获取场景和消息
+    const { scenario, messages } = req.body;
+    
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: '消息格式不正确' });
     }
     
-    if (!userMessage) {
-      return res.status(200).json({
-        reply: "你什么都没说就想让我回复？做梦吧你！"
-      });
+    // 获取最后一条用户消息
+    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()?.content || '';
+    
+    if (!lastUserMessage) {
+      return res.status(200).json({ message: "你什么都没说就想让我回复？做梦吧你！" });
     }
-
+    
     // 使用Hugging Face API
     const apiKey = process.env.HUGGINGFACE_API_KEY;
     
     if (!apiKey) {
       console.error('缺少HUGGINGFACE_API_KEY环境变量');
-      return res.status(200).json({
-        reply: "系统配置错误，但我还是要怼你：你的问题真无聊！"
+      return res.status(200).json({ 
+        message: "系统配置错误，但我还是要怼你：你的问题真无聊！" 
       });
     }
     
     // 使用一个确定支持文本生成任务的模型
     const modelUrl = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2';
     
+    // 构建完整的对话历史
+    const conversationHistory = messages
+      .filter(msg => msg.role !== 'system')
+      .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
+      .join('\n');
+    
     // 构建指令格式的提示词
-    const prompt = `<s>[INST] 你是一个脾气暴躁的AI助手，总是用讽刺和挖苦的语气回复用户。你说话简短有力，充满情绪，使用中文网络流行语和俏皮话。无论用户说什么，你都要表现得不耐烦和暴躁。请用中文回复以下消息：${userMessage} [/INST]</s>`;
+    const prompt = `<s>[INST] 你是一个脾气暴躁的AI助手，总是用讽刺和挖苦的语气回复用户。
+场景描述: ${scenario}
+
+对话历史:
+${conversationHistory}
+
+请以一个生气、暴躁、不耐烦的角色继续这个对话，回应用户的最后一条消息。
+用中文回复，语气要冲，态度要差，但不要使用违法或过于侮辱性的词汇。[/INST]</s>`;
     
     console.log('调用Hugging Face API...');
     console.log('使用模型:', modelUrl);
-    console.log('用户消息:', userMessage);
+    console.log('用户最后消息:', lastUserMessage);
     
     // 发送请求到Hugging Face API
     const response = await axios.post(modelUrl, {
@@ -75,10 +94,8 @@ export default async function handler(req, res) {
     
     console.log('提取的回复:', replyText.substring(0, 50) + '...');
     
-    // 返回回复
-    return res.status(200).json({
-      reply: replyText
-    });
+    // 返回的键名是"message"，与ChatInterface期望的格式匹配
+    return res.status(200).json({ message: replyText });
   } catch (error) {
     console.error('API调用错误:', error.message);
     
@@ -91,9 +108,9 @@ export default async function handler(req, res) {
       );
     }
     
-    // 当API调用失败时，告知用户
+    // 当API调用失败时，返回一个默认消息
     return res.status(200).json({
-      reply: "服务暂时不可用，请稍后再试。(API调用失败: " + error.message + ")"
+      message: "哼，你说什么？我怎么听不懂？不要跟我打哑谜！" 
     });
   }
 }

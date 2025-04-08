@@ -10,9 +10,6 @@ export default async function handler(req, res) {
     // 从请求中获取场景和消息
     const { scenario, messages } = req.body;
     
-    console.log('处理请求 - 场景:', scenario ? scenario.substring(0, 50) + '...' : '无');
-    console.log('消息数组长度:', messages ? messages.length : 0);
-    
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: '消息格式不正确' });
     }
@@ -34,17 +31,15 @@ export default async function handler(req, res) {
       });
     }
     
-    console.log('API密钥长度:', apiKey.length);
-    
-    // 根据DeepSeek官方文档修正的API端点
+    // DeepSeek API端点
     const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     
     // 构建完整的对话历史，只包含最近的几轮对话，避免提示词过长
     const recentMessages = messages
       .filter(msg => msg.role !== 'system')
-      .slice(-6); // 最多取最近3轮对话（用户+AI各一条）
+      .slice(-4); // 修改：从6条减少到4条(2轮对话)，减少token用量
     
-    // 构建更精确的系统提示词
+    // 构建更精确的系统提示词，并限制长度
     const systemPrompt = `你是一个吵架模拟器中的角色，需要扮演与用户发生争执的对方。你的目标是让用户感到被激怒，但同时保持逻辑连贯和语言通顺。
 
 场景描述: ${scenario}
@@ -57,7 +52,7 @@ export default async function handler(req, res) {
 5. 回复要简洁有力，通常不超过3句话，要一针见血地攻击用户的论点。
 6. 不要重复用户的原话，而是曲解用户的意思，把对方的话往坏处理解。
 7. 符合场景背景，根据具体情景调整你的角色身份和回应方式。
-8. 不要使用任何违反中国法律法规的言论或敏感内容。`;
+8. 不要使用任何违反中国法律法规的言论或敏感内容。`.substring(0, 1000); // 限制系统提示词长度为1000字符
     
     // 准备消息数组，DeepSeek API格式
     const apiMessages = [
@@ -72,74 +67,47 @@ export default async function handler(req, res) {
     ];
     
     console.log('调用DeepSeek API...');
-    console.log('API端点:', apiUrl);
     console.log('用户最后消息:', lastUserMessage);
     
-    // 请求体
+    // 修改点1：更新模型标识符和优化请求体
     const requestBody = {
-      model: "'deepseek-chat-1.3',", // DeepSeek-V3，根据官方文档
+      model: "deepseek-chat-1.3", // 修正模型名称
       messages: apiMessages,
-      temperature: 0.1,
-      max_tokens: 400
-      // 简化请求体，移除可能不支持的参数
+      temperature: 0.75,
+      max_tokens: 300,
+      top_p: 0.9, // 新增参数控制输出多样性
+      frequency_penalty: 0.5 // 新增参数减少重复
     };
     
-    console.log('请求体预览:', JSON.stringify(requestBody).substring(0, 200) + '...');
-    
-    // 发送请求到DeepSeek API
+    // 修改点2：优化请求头
     const response = await axios.post(apiUrl, requestBody, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'ArgueBot/1.0' // 新增用户代理标识
       },
-      timeout: 15000 // 15秒超时
+      timeout: 30000 // 30秒超时
     });
     
     console.log('DeepSeek API响应状态:', response.status);
-    console.log('响应头部:', JSON.stringify(response.headers));
-    console.log('响应数据结构:', Object.keys(response.data));
-    console.log('响应数据预览:', JSON.stringify(response.data).substring(0, 300) + '...');
     
-    // 从响应中提取回复文本 - 添加多个解析路径
+    // 修改点3：简化响应解析逻辑
     let replyText = '';
     
-    // 尝试多种可能的响应格式
-    if (response.data && response.data.choices && response.data.choices.length > 0) {
-      const choice = response.data.choices[0];
-      
-      if (choice.message && choice.message.content) {
-        // 标准OpenAI格式
-        replyText = choice.message.content;
-        console.log('使用标准OpenAI格式解析');
-      } else if (choice.text) {
-        // 可能的替代格式
-        replyText = choice.text;
-        console.log('使用替代格式(text)解析');
-      } else if (typeof choice === 'string') {
-        // 直接返回文本
-        replyText = choice;
-        console.log('使用字符串格式解析');
-      } else {
-        console.log('无法识别的choice格式:', JSON.stringify(choice));
-      }
-    } else if (response.data && response.data.response) {
-      // 可能的替代格式
-      replyText = response.data.response;
-      console.log('使用response字段解析');
-    } else if (response.data && typeof response.data === 'string') {
-      // 可能直接返回文本
-      replyText = response.data;
-      console.log('使用直接字符串解析');
-    } else {
-      console.log('无法解析的响应格式，完整响应:', JSON.stringify(response.data));
+    try {
+      // 使用标准路径直接提取回复
+      replyText = response.data.choices[0].message.content.trim();
+    } catch (parseError) {
+      console.error('响应解析错误:', parseError.message);
+      console.log('响应数据:', JSON.stringify(response.data).substring(0, 200));
       throw new Error('无法从API响应中提取回复');
     }
     
     // 清理AI响应，移除可能的格式问题
     replyText = replyText.trim();
       
-    // 确保回复不为空且有意义
-    if (!replyText || replyText.length < 5) {
+    // 修改点4：调整最小有效回复长度检查
+    if (!replyText || replyText.length < 2) { // 从5改为2，因为"呵呵"这样的短回复也是有效的
       const defaultResponses = [
         "呵呵，你这种人真是不可理喻，我没时间和你在这浪费口舌！",
         "你是不是脑子有问题？连这么简单的事都理解不了？",
@@ -148,29 +116,28 @@ export default async function handler(req, res) {
         "行了行了，你说得都对，我不想和你这种人争论！"
       ];
       replyText = defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
-      console.log('使用默认回复');
     }
     
-    console.log('最终提取的回复:', replyText);
+    console.log('提取的回复:', replyText.substring(0, 50) + '...');
     
     // 返回的键名是"message"，与ChatInterface期望的格式匹配
     return res.status(200).json({ message: replyText });
   } catch (error) {
-    console.error('API调用错误:');
-    console.error('错误消息:', error.message);
-    console.error('错误名称:', error.name);
+    console.error('API调用错误:', error.message);
     
+    // 修改点5：增强错误处理
     if (error.response) {
       console.error('错误状态:', error.response.status);
-      console.error('错误状态文本:', error.response.statusText);
-      console.error('错误头部:', JSON.stringify(error.response.headers));
-      console.error('错误数据:', JSON.stringify(error.response.data));
-    } else if (error.request) {
-      // 请求已发出但没有收到响应
-      console.error('未收到响应:', error.request);
-    } else {
-      // 设置请求时发生错误
-      console.error('请求设置错误:', error.message);
+      console.error('错误数据:', 
+        typeof error.response.data === 'object' ? 
+        JSON.stringify(error.response.data).substring(0, 200) : 
+        String(error.response.data).substring(0, 200)
+      );
+      
+      // 特殊处理速率限制错误
+      if (error.response.status === 429) {
+        console.warn('遇到速率限制，建议添加重试逻辑');
+      }
     }
     
     // 当API调用失败时，返回一个随机的刻薄回复

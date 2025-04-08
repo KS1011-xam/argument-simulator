@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     }
     
     // DeepSeek API端点
-    const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+    const apiUrl = 'https://api.deepseek.com/v3/chat/completions';
     
     // 构建完整的对话历史，只包含最近的几轮对话，避免提示词过长
     const recentMessages = messages

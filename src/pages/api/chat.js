@@ -21,30 +21,26 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "你什么都没说就想让我回复？做梦吧你！" });
     }
     
-    // 使用Hugging Face API
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    // 使用DeepSeek API
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     
     if (!apiKey) {
-      console.error('缺少HUGGINGFACE_API_KEY环境变量');
+      console.error('缺少DEEPSEEK_API_KEY环境变量');
       return res.status(200).json({ 
         message: "系统配置错误，但我还是要怼你：你的问题真无聊！" 
       });
     }
     
-    // 使用一个确定支持文本生成任务的模型
-    const modelUrl = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2';
+    // DeepSeek API端点
+    const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     
     // 构建完整的对话历史，只包含最近的几轮对话，避免提示词过长
     const recentMessages = messages
       .filter(msg => msg.role !== 'system')
       .slice(-6); // 最多取最近3轮对话（用户+AI各一条）
     
-    const conversationHistory = recentMessages
-      .map(msg => `${msg.role === 'user' ? '用户' : '对方'}: ${msg.content}`)
-      .join('\n');
-    
-    // 构建更精确的提示词
-    const prompt = `<s>[INST] 你是一个吵架模拟器中的角色，需要扮演与用户发生争执的对方。你的目标是让用户感到被激怒，但同时保持逻辑连贯和语言通顺。
+    // 构建更精确的系统提示词
+    const systemPrompt = `你是一个吵架模拟器中的角色，需要扮演与用户发生争执的对方。你的目标是让用户感到被激怒，但同时保持逻辑连贯和语言通顺。
 
 场景描述: ${scenario}
 
@@ -56,59 +52,57 @@ export default async function handler(req, res) {
 5. 回复要简洁有力，通常不超过3句话，要一针见血地攻击用户的论点。
 6. 不要重复用户的原话，而是曲解用户的意思，把对方的话往坏处理解。
 7. 符合场景背景，根据具体情景调整你的角色身份和回应方式。
-
-对话历史：
-${conversationHistory}
-
-作为与用户争执的对方，请针对用户的最后一条消息给出刻薄尖锐的回复：[/INST]</s>`;
+8. 不要使用任何违反中国法律法规的言论或敏感内容。`;
     
-    console.log('调用Hugging Face API...');
+    // 准备消息数组，DeepSeek API格式
+    const apiMessages = [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      ...recentMessages.map(msg => ({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content
+      }))
+    ];
+    
+    console.log('调用DeepSeek API...');
     console.log('用户最后消息:', lastUserMessage);
     
-    // 发送请求到Hugging Face API
-    const response = await axios.post(modelUrl, {
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: 150,
-        temperature: 0.7, // 降低温度以增加逻辑连贯性
-        top_p: 0.92,
-        do_sample: true,
-        return_full_text: false
-      }
+    // 发送请求到DeepSeek API
+    const response = await axios.post(apiUrl, {
+      model: "deepseek-chat", // 或使用其他可用的DeepSeek模型
+      messages: apiMessages,
+      temperature: 0.75,
+      max_tokens: 300,
+      top_p: 0.92,
+      presence_penalty: 0.1,
+      frequency_penalty: 0.1
     }, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 20000 // 20秒超时
+      timeout: 30000 // 30秒超时
     });
     
-    console.log('Hugging Face API响应状态:', response.status);
+    console.log('DeepSeek API响应状态:', response.status);
     
     // 从响应中提取回复文本
     let replyText = '';
     
-    if (Array.isArray(response.data) && response.data.length > 0) {
-      if (typeof response.data[0] === 'object' && response.data[0].generated_text) {
-        replyText = response.data[0].generated_text;
-      } else {
-        replyText = String(response.data[0]);
-      }
-    } else if (typeof response.data === 'object' && response.data.generated_text) {
-      replyText = response.data.generated_text;
-    } else if (typeof response.data === 'string') {
-      replyText = response.data;
+    if (response.data && 
+        response.data.choices && 
+        response.data.choices.length > 0 &&
+        response.data.choices[0].message) {
+      replyText = response.data.choices[0].message.content;
     } else {
       console.log('无法识别的响应格式:', JSON.stringify(response.data).substring(0, 200));
       throw new Error('无法从API响应中提取回复');
     }
     
     // 清理AI响应，移除可能的格式问题
-    replyText = replyText
-      .replace(/^对方:\s*/i, '') // 移除可能的前缀
-      .replace(/^AI角色:\s*/i, '') // 移除可能的前缀
-      .replace(/\[object Object\]/g, '') // 移除[object Object]
-      .trim();
+    replyText = replyText.trim();
       
     // 确保回复不为空且有意义
     if (!replyText || replyText.length < 5) {

@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     
     // 修改点1：更新模型标识符和优化请求体
     const requestBody = {
-      model: "deepseek-chat-1.3", // 修正模型名称
+      model: "deepseek-chat", // 修正模型名称
       messages: apiMessages,
       temperature: 0.75,
       max_tokens: 300,
